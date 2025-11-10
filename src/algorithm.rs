@@ -400,8 +400,11 @@ where
 
     // Use the shared function to handle the last two chunks
     let final_xmm7 = get_last_two_xmms::<T, W>(
-        &data[CRC_CHUNK_SIZE..],
-        remaining_len,
+        DataRegion {
+            full_data: data,
+            offset: CRC_CHUNK_SIZE,
+            remaining: remaining_len,
+        },
         xmm7,
         keys,
         reflector,
@@ -461,8 +464,11 @@ where
     if remaining_len > 0 {
         // Use the shared get_last_two_xmms function to handle the remaining bytes
         xmm7 = get_last_two_xmms::<T, W>(
-            &data[current_pos..],
-            remaining_len,
+            DataRegion {
+                full_data: data,
+                offset: current_pos,
+                remaining: remaining_len,
+            },
             xmm7,
             keys,
             reflector,
@@ -475,8 +481,27 @@ where
     W::perform_final_reduction(xmm7, state.reflected, keys, ops)
 }
 
+/// Data region descriptor for overlapping SIMD reads in CRC processing
+struct DataRegion<'a> {
+    full_data: &'a [u8],
+    offset: usize,
+    remaining: usize,
+}
+
 /// Handle the last two chunks of data (for small inputs)
 /// This shared implementation works for both CRC-32 and CRC-64
+///
+/// # Safety
+///
+/// This function requires:
+/// - `region.full_data` must contain at least `region.offset + region.remaining` bytes
+/// - `region.offset` must be >= `CRC_CHUNK_SIZE` (16 bytes) to allow reading the overlapping region
+/// - `region.remaining` must be in range 1..=15 (less than one chunk)
+/// - The caller must ensure appropriate SIMD features are available (checked via target_feature)
+///
+/// The function performs an overlapping read: it loads 16 bytes starting from position
+/// `region.offset - CRC_CHUNK_SIZE + region.remaining` in the full buffer. This creates a vector
+/// containing both the tail of the previously processed chunk and the new remaining data.
 #[inline]
 #[cfg_attr(
     any(target_arch = "x86", target_arch = "x86_64"),
@@ -484,8 +509,7 @@ where
 )]
 #[cfg_attr(target_arch = "aarch64", target_feature(enable = "aes"))]
 unsafe fn get_last_two_xmms<T: ArchOps, W: EnhancedCrcWidth>(
-    data: &[u8],
-    remaining_len: usize,
+    region: DataRegion,
     current_state: T::Vector,
     keys: [u64; 23],
     reflector: &Reflector<T::Vector>,
@@ -495,20 +519,29 @@ unsafe fn get_last_two_xmms<T: ArchOps, W: EnhancedCrcWidth>(
 where
     T::Vector: Copy,
 {
+    // Safety check: ensure we have enough data before the offset for the overlapping read
+    debug_assert!(region.offset >= CRC_CHUNK_SIZE,
+        "offset must be >= CRC_CHUNK_SIZE to allow overlapping read");
+    debug_assert!(region.remaining > 0 && region.remaining < CRC_CHUNK_SIZE,
+        "remaining must be 1..15 bytes");
+    debug_assert!(region.offset + region.remaining <= region.full_data.len(),
+        "offset + remaining must not exceed full_data length");
     // Create coefficient for folding operations
     let coefficient = W::create_coefficient(keys[2], keys[1], reflected, ops);
 
     let const_mask = ops.set_all_bytes(0x80);
 
     // Get table pointer and offset based on CRC width
-    let (table_ptr, offset) = W::get_last_bytes_table_ptr(reflected, remaining_len);
+    let (table_ptr, offset) = W::get_last_bytes_table_ptr(reflected, region.remaining);
 
     if reflected {
         // For reflected mode (CRC-32r, CRC-64r)
 
-        // Load the remaining data
-        // Special pointer arithmetic to match the original implementation
-        let xmm1 = ops.load_bytes(data.as_ptr().sub(CRC_CHUNK_SIZE).add(remaining_len)); // DON: looks correct
+        // Load the remaining data using an overlapping read
+        // This loads 16 bytes starting from (offset - CRC_CHUNK_SIZE + remaining),
+        // which includes the tail of the previous chunk plus the remaining new data
+        let read_offset = region.offset - CRC_CHUNK_SIZE + region.remaining;
+        let xmm1 = ops.load_bytes(region.full_data.as_ptr().add(read_offset));
 
         // Load the shuffle mask
         let mut xmm0 = ops.load_bytes(table_ptr.add(offset));
@@ -549,9 +582,9 @@ where
     } else {
         // For non-reflected mode (CRC-32f, CRC-64f)
 
-        // Load the remaining data and apply reflection if needed
-        let data_ptr = data.as_ptr().sub(CRC_CHUNK_SIZE).add(remaining_len);
-        let mut xmm1 = ops.load_bytes(data_ptr);
+        // Load the remaining data using an overlapping read (same as reflected mode)
+        let read_offset = region.offset - CRC_CHUNK_SIZE + region.remaining;
+        let mut xmm1 = ops.load_bytes(region.full_data.as_ptr().add(read_offset));
 
         // Apply reflection if in forward mode
         if let Reflector::ForwardReflector { smask } = reflector {
