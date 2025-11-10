@@ -11,7 +11,7 @@
 
 #![cfg(target_arch = "wasm32")]
 
-use crc_fast::{checksum, Digest, CrcAlgorithm};
+use crc_fast::{checksum, CrcAlgorithm, Digest};
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -79,7 +79,10 @@ fn test_wasm_all_crc32_algorithms() {
 fn test_wasm_all_crc64_algorithms() {
     let data = b"123456789";
 
-    assert_eq!(checksum(CrcAlgorithm::Crc64Ecma182, data), 0x6c40df5f0b497347);
+    assert_eq!(
+        checksum(CrcAlgorithm::Crc64Ecma182, data),
+        0x6c40df5f0b497347
+    );
     assert_eq!(checksum(CrcAlgorithm::Crc64Nvme, data), 0xae8b14860a799888);
     assert_eq!(checksum(CrcAlgorithm::Crc64Xz, data), 0x995dc9bbdf1939fa);
 }

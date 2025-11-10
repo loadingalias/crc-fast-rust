@@ -37,7 +37,7 @@ fn test_alloc_feature_works() {
 #[test]
 fn test_core_types_only() {
     // Verify we only use core types in public API
-    use crc_fast::{Digest, CrcAlgorithm};
+    use crc_fast::{CrcAlgorithm, Digest};
 
     let mut digest = Digest::new(CrcAlgorithm::Crc32IsoHdlc);
     digest.update(b"test");

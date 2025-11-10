@@ -40,7 +40,8 @@ pub(crate) unsafe fn update(state: u64, bytes: &[u8], params: CrcParams) -> u64 
         ArchOpsInstance::Aarch64Aes(ops) => update_aarch64_aes(state, bytes, params, *ops),
         ArchOpsInstance::SoftwareFallback => {
             #[cfg(feature = "std")]
-            let has_features = is_aarch64_feature_detected!("aes") && is_aarch64_feature_detected!("neon");
+            let has_features =
+                is_aarch64_feature_detected!("aes") && is_aarch64_feature_detected!("neon");
             #[cfg(not(feature = "std"))]
             let has_features = cfg!(target_feature = "aes") && cfg!(target_feature = "neon");
 

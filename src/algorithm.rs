@@ -520,12 +520,18 @@ where
     T::Vector: Copy,
 {
     // Safety check: ensure we have enough data before the offset for the overlapping read
-    debug_assert!(region.offset >= CRC_CHUNK_SIZE,
-        "offset must be >= CRC_CHUNK_SIZE to allow overlapping read");
-    debug_assert!(region.remaining > 0 && region.remaining < CRC_CHUNK_SIZE,
-        "remaining must be 1..15 bytes");
-    debug_assert!(region.offset + region.remaining <= region.full_data.len(),
-        "offset + remaining must not exceed full_data length");
+    debug_assert!(
+        region.offset >= CRC_CHUNK_SIZE,
+        "offset must be >= CRC_CHUNK_SIZE to allow overlapping read"
+    );
+    debug_assert!(
+        region.remaining > 0 && region.remaining < CRC_CHUNK_SIZE,
+        "remaining must be 1..15 bytes"
+    );
+    debug_assert!(
+        region.offset + region.remaining <= region.full_data.len(),
+        "offset + remaining must not exceed full_data length"
+    );
     // Create coefficient for folding operations
     let coefficient = W::create_coefficient(keys[2], keys[1], reflected, ops);
 

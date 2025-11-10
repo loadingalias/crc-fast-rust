@@ -377,7 +377,7 @@ fn test_third_party_const_definitions_compatibility() {
 }
 
 #[test]
-#[allow(clippy::needless_range_loop)]  // Intentionally testing indexed key access patterns
+#[allow(clippy::needless_range_loop)] // Intentionally testing indexed key access patterns
 fn test_existing_key_access_patterns_continue_to_work() {
     // Test that common key access patterns used by existing code continue to work
 
@@ -470,7 +470,7 @@ fn test_existing_key_access_patterns_continue_to_work() {
 }
 
 #[test]
-#[allow(clippy::needless_range_loop)]  // Intentionally testing indexed key access for backwards compatibility
+#[allow(clippy::needless_range_loop)] // Intentionally testing indexed key access for backwards compatibility
 fn test_backwards_compatibility_throughout_migration_phases() {
     // This test simulates the migration phases to ensure backwards compatibility
 
@@ -546,7 +546,7 @@ fn test_backwards_compatibility_throughout_migration_phases() {
 }
 
 #[test]
-#[allow(clippy::needless_range_loop)]  // Intentionally testing indexed access performance
+#[allow(clippy::needless_range_loop)] // Intentionally testing indexed access performance
 fn test_key_access_performance_matches_direct_array_access() {
     // This test verifies that CrcKeysStorage key access has zero runtime overhead
     // compared to direct array access. While we can't easily measure exact timing
@@ -878,7 +878,7 @@ fn test_compiler_optimizations_eliminate_enum_dispatch() {
     assert_ne!(mixed_sum, 0, "Mixed access should produce non-zero result");
 }
 #[test]
-#[allow(clippy::needless_range_loop)]  // Intentionally testing indexed key access for future variant
+#[allow(clippy::needless_range_loop)] // Intentionally testing indexed key access for future variant
 fn test_create_crc_params_using_keys_future_test_variant() {
     // Create test CrcParams using KeysFutureTest variant with 25 keys
     let test_keys_25 = [

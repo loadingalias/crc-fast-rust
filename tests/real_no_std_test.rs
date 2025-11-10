@@ -12,7 +12,7 @@
 //!   cargo build --lib --no-default-features --features alloc  # With alloc
 //!   cargo build --lib --no-default-features --features cache  # With caching
 
-use crc_fast::{checksum, Digest, CrcAlgorithm};
+use crc_fast::{checksum, CrcAlgorithm, Digest};
 
 /// Test basic checksum calculation (works without std)
 #[test]
@@ -59,7 +59,10 @@ fn test_no_std_all_algorithms() {
     assert_eq!(checksum(CrcAlgorithm::Crc32Mpeg2, data), 0x0376e6e7);
 
     // CRC-64 variants
-    assert_eq!(checksum(CrcAlgorithm::Crc64Ecma182, data), 0x6c40df5f0b497347);
+    assert_eq!(
+        checksum(CrcAlgorithm::Crc64Ecma182, data),
+        0x6c40df5f0b497347
+    );
     assert_eq!(checksum(CrcAlgorithm::Crc64GoIso, data), 0xb90956c775a41001);
     assert_eq!(checksum(CrcAlgorithm::Crc64Ms, data), 0x75d4b74f024eceea);
     assert_eq!(checksum(CrcAlgorithm::Crc64Nvme, data), 0xae8b14860a799888);
