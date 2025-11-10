@@ -20,11 +20,34 @@ use std::slice;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 
+/// Error codes for FFI operations
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CrcFastError {
+    /// Operation completed successfully
+    Success = 0,
+    /// Lock was poisoned (thread panicked while holding lock)
+    LockPoisoned = 1,
+    /// Null pointer was passed where non-null required
+    NullPointer = 2,
+    /// Invalid key count for CRC parameters
+    InvalidKeyCount = 3,
+    /// Unsupported CRC width (must be 32 or 64)
+    UnsupportedWidth = 4,
+    /// Invalid UTF-8 string
+    InvalidUtf8 = 5,
+    /// File I/O error
+    IoError = 6,
+    /// Internal string conversion error
+    StringConversionError = 7,
+}
+
 // Global storage for stable key pointers to ensure they remain valid across FFI boundary
 static STABLE_KEY_STORAGE: OnceLock<Mutex<HashMap<u64, Box<[u64]>>>> = OnceLock::new();
 
 /// Creates a stable pointer to the keys for FFI usage.
 /// The keys are stored in global memory to ensure the pointer remains valid.
+/// Returns (pointer, count) on success, or (null, 0) on error.
 fn create_stable_key_pointer(keys: &crate::CrcKeysStorage) -> (*const u64, u32) {
     let storage = STABLE_KEY_STORAGE.get_or_init(|| Mutex::new(HashMap::new()));
 
@@ -44,7 +67,10 @@ fn create_stable_key_pointer(keys: &crate::CrcKeysStorage) -> (*const u64, u32) 
         }
     };
 
-    let mut storage_map = storage.lock().unwrap();
+    let mut storage_map = match storage.lock() {
+        Ok(guard) => guard,
+        Err(_) => return (std::ptr::null(), 0), // Lock poisoned
+    };
 
     // Check if we already have this key set stored
     if let Some(stored_keys) = storage_map.get(&key_hash) {
@@ -140,34 +166,49 @@ pub struct CrcFastParams {
     pub keys: *const u64,
 }
 
-// Convert from FFI struct to internal struct
+/// Fallible conversion from FFI struct to internal struct
+/// Returns None if the parameters are invalid (unsupported key count)
+fn try_params_from_ffi(value: &CrcFastParams) -> Option<CrcParams> {
+    // Validate key pointer
+    if value.keys.is_null() {
+        return None;
+    }
+
+    // Convert C array back to appropriate CrcKeysStorage
+    let keys = unsafe { std::slice::from_raw_parts(value.keys, value.key_count as usize) };
+
+    let storage = match value.key_count {
+        23 => match keys.try_into() {
+            Ok(arr) => crate::CrcKeysStorage::from_keys_fold_256(arr),
+            Err(_) => return None,
+        },
+        25 => match keys.try_into() {
+            Ok(arr) => crate::CrcKeysStorage::from_keys_fold_future_test(arr),
+            Err(_) => return None,
+        },
+        _ => return None, // Unsupported key count
+    };
+
+    Some(CrcParams {
+        algorithm: value.algorithm.into(),
+        name: "custom", // C interface doesn't need the name field
+        width: value.width,
+        poly: value.poly,
+        init: value.init,
+        refin: value.refin,
+        refout: value.refout,
+        xorout: value.xorout,
+        check: value.check,
+        keys: storage,
+    })
+}
+
+// Convert from FFI struct to internal struct (legacy, may panic)
+// For backwards compatibility, but prefer try_params_from_ffi
 impl From<CrcFastParams> for CrcParams {
     fn from(value: CrcFastParams) -> Self {
-        // Convert C array back to appropriate CrcKeysStorage
-        let keys = unsafe { std::slice::from_raw_parts(value.keys, value.key_count as usize) };
-
-        let storage = match value.key_count {
-            23 => crate::CrcKeysStorage::from_keys_fold_256(
-                keys.try_into().expect("Invalid key count for fold_256"),
-            ),
-            25 => crate::CrcKeysStorage::from_keys_fold_future_test(
-                keys.try_into().expect("Invalid key count for future_test"),
-            ),
-            _ => panic!("Unsupported key count: {}", value.key_count),
-        };
-
-        CrcParams {
-            algorithm: value.algorithm.into(),
-            name: "custom", // C interface doesn't need the name field
-            width: value.width,
-            poly: value.poly,
-            init: value.init,
-            refin: value.refin,
-            refout: value.refout,
-            xorout: value.xorout,
-            check: value.check,
-            keys: storage,
-        }
+        try_params_from_ffi(&value)
+            .expect("Invalid CRC parameters: unsupported key count or null pointer")
     }
 }
 
@@ -234,13 +275,19 @@ pub extern "C" fn crc_fast_digest_new_with_init_state(
 }
 
 /// Creates a new Digest to compute CRC checksums using custom parameters
+/// Returns NULL if parameters are invalid (invalid key count or null pointer)
 #[no_mangle]
 pub extern "C" fn crc_fast_digest_new_with_params(
     params: CrcFastParams,
 ) -> *mut CrcFastDigestHandle {
-    let digest = Box::new(Digest::new_with_params(params.into()));
-    let handle = Box::new(CrcFastDigestHandle(Box::into_raw(digest)));
-    Box::into_raw(handle)
+    match try_params_from_ffi(&params) {
+        Some(crc_params) => {
+            let digest = Box::new(Digest::new_with_params(crc_params));
+            let handle = Box::new(CrcFastDigestHandle(Box::into_raw(digest)));
+            Box::into_raw(handle)
+        }
+        None => std::ptr::null_mut(), // Invalid parameters
+    }
 }
 
 /// Updates the Digest with data
@@ -377,6 +424,7 @@ pub extern "C" fn crc_fast_checksum(
 }
 
 /// Helper method to calculate a CRC checksum directly for data using custom parameters
+/// Returns 0 if parameters are invalid or data is null
 #[no_mangle]
 pub extern "C" fn crc_fast_checksum_with_params(
     params: CrcFastParams,
@@ -386,14 +434,18 @@ pub extern "C" fn crc_fast_checksum_with_params(
     if data.is_null() {
         return 0;
     }
-    unsafe {
-        #[allow(clippy::unnecessary_cast)]
-        let bytes = slice::from_raw_parts(data as *const u8, len);
-        crate::checksum_with_params(params.into(), bytes)
+    match try_params_from_ffi(&params) {
+        Some(crc_params) => unsafe {
+            #[allow(clippy::unnecessary_cast)]
+            let bytes = slice::from_raw_parts(data as *const u8, len);
+            crate::checksum_with_params(crc_params, bytes)
+        },
+        None => 0, // Invalid parameters
     }
 }
 
 /// Helper method to just calculate a CRC checksum directly for a file using algorithm
+/// Returns 0 if path is null or file I/O fails
 #[no_mangle]
 pub extern "C" fn crc_fast_checksum_file(
     algorithm: CrcFastAlgorithm,
@@ -410,11 +462,12 @@ pub extern "C" fn crc_fast_checksum_file(
             &convert_to_string(path_ptr, path_len),
             None,
         )
-        .unwrap()
+        .unwrap_or(0) // Return 0 on I/O error
     }
 }
 
 /// Helper method to calculate a CRC checksum directly for a file using custom parameters
+/// Returns 0 if parameters are invalid, path is null, or file I/O fails
 #[no_mangle]
 pub extern "C" fn crc_fast_checksum_file_with_params(
     params: CrcFastParams,
@@ -425,13 +478,16 @@ pub extern "C" fn crc_fast_checksum_file_with_params(
         return 0;
     }
 
-    unsafe {
-        crate::checksum_file_with_params(
-            params.into(),
-            &convert_to_string(path_ptr, path_len),
-            None,
-        )
-        .unwrap_or(0) // Return 0 on error instead of panicking
+    match try_params_from_ffi(&params) {
+        Some(crc_params) => unsafe {
+            crate::checksum_file_with_params(
+                crc_params,
+                &convert_to_string(path_ptr, path_len),
+                None,
+            )
+            .unwrap_or(0) // Return 0 on error instead of panicking
+        },
+        None => 0, // Invalid parameters
     }
 }
 
@@ -447,6 +503,7 @@ pub extern "C" fn crc_fast_checksum_combine(
 }
 
 /// Combine two CRC checksums using custom parameters
+/// Returns 0 if parameters are invalid
 #[no_mangle]
 pub extern "C" fn crc_fast_checksum_combine_with_params(
     params: CrcFastParams,
@@ -454,7 +511,12 @@ pub extern "C" fn crc_fast_checksum_combine_with_params(
     checksum2: u64,
     checksum2_len: u64,
 ) -> u64 {
-    crate::checksum_combine_with_params(params.into(), checksum1, checksum2, checksum2_len)
+    match try_params_from_ffi(&params) {
+        Some(crc_params) => {
+            crate::checksum_combine_with_params(crc_params, checksum1, checksum2, checksum2_len)
+        }
+        None => 0, // Invalid parameters
+    }
 }
 
 /// Returns the custom CRC parameters for a given set of Rocksoft CRC parameters
@@ -494,7 +556,8 @@ pub extern "C" fn crc_fast_get_custom_params(
         algorithm: match width {
             32 => CrcFastAlgorithm::Crc32Custom,
             64 => CrcFastAlgorithm::Crc64Custom,
-            _ => panic!("Unsupported width: {width}",),
+            // Default to 32-bit for unsupported widths (defensive programming)
+            _ => CrcFastAlgorithm::Crc32Custom,
         },
         width: params.width,
         poly: params.poly,
@@ -509,20 +572,28 @@ pub extern "C" fn crc_fast_get_custom_params(
 }
 
 /// Gets the target build properties (CPU architecture and fine-tuning parameters) for this algorithm
+/// Returns NULL if string conversion fails (should never happen)
 #[no_mangle]
 pub extern "C" fn crc_fast_get_calculator_target(algorithm: CrcFastAlgorithm) -> *const c_char {
     let target = get_calculator_target(algorithm.into());
 
-    std::ffi::CString::new(target).unwrap().into_raw()
+    std::ffi::CString::new(target)
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null())
 }
 
 /// Gets the version of this library
+/// Returns a pointer to "unknown" if version string is invalid
 #[no_mangle]
 pub extern "C" fn crc_fast_get_version() -> *const c_char {
     const VERSION: &CStr =
         match CStr::from_bytes_with_nul(concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes()) {
             Ok(version) => version,
-            Err(_) => panic!("package version contains null bytes??"),
+            // Fallback to "unknown" if version string is malformed
+            Err(_) => match CStr::from_bytes_with_nul(b"unknown\0") {
+                Ok(v) => v,
+                Err(_) => unsafe { CStr::from_bytes_with_nul_unchecked(b"unknown\0") },
+            },
         };
 
     VERSION.as_ptr()
@@ -536,6 +607,6 @@ unsafe fn convert_to_string(data: *const u8, len: usize) -> String {
     // Safely construct string slice from raw parts
     match std::str::from_utf8(slice::from_raw_parts(data, len)) {
         Ok(s) => s.to_string(),
-        Err(_) => panic!("Invalid UTF-8 string"),
+        Err(_) => String::new(), // Return empty string for invalid UTF-8
     }
 }

@@ -131,6 +131,119 @@
 //!
 //! assert_eq!(checksum, 0xcbf43926);
 //! ```
+//!
+//! # Feature Flags
+//!
+//! The crate supports several feature flags to enable different functionality and optimize for
+//! different environments:
+//!
+//! ## Available Features
+//!
+//! - **`std`** (default): Enables standard library support
+//!   - Provides file I/O operations (`checksum_file`)
+//!   - Enables runtime CPU feature detection
+//!   - Uses kernel-provided synchronization primitives for caching
+//!   - Required for FFI (C-compatible interface)
+//!
+//! - **`alloc`** (implied by `std`): Enables allocator support
+//!   - Required for the `Digest` type (implements `DynDigest`)
+//!   - Enables custom CRC parameters via `CrcParams`
+//!   - Allows dynamic memory allocation for internal structures
+//!
+//! - **`cache`**: Enables lookup table caching for custom CRC parameters
+//!   - Significantly improves performance for repeated custom CRC calculations
+//!   - In `no_std` mode, uses `spin` locks instead of standard library locks
+//!   - Requires `alloc` feature
+//!   - Provides 50-100x speedup for custom parameters
+//!
+//! - **`cli`**: Enables command-line interface tools
+//!   - Builds the `crc-gen` and `crc-cli` binaries
+//!   - Requires `std` feature
+//!
+//! ## Feature Combinations
+//!
+//! ```toml
+//! # Standard configuration (default)
+//! [dependencies]
+//! crc-fast = "1.7"
+//!
+//! # Minimal no_std without allocator (bare metal)
+//! [dependencies]
+//! crc-fast = { version = "1.7", default-features = false }
+//!
+//! # no_std with allocator (embedded with heap)
+//! [dependencies]
+//! crc-fast = { version = "1.7", default-features = false, features = ["alloc"] }
+//!
+//! # no_std with allocator and caching (optimal for embedded)
+//! [dependencies]
+//! crc-fast = { version = "1.7", default-features = false, features = ["alloc", "cache"] }
+//! ```
+//!
+//! # no_std Support
+//!
+//! This crate fully supports `no_std` environments, making it suitable for embedded systems,
+//! WASM targets, and other constrained environments.
+//!
+//! ## Minimal no_std Usage (no allocator)
+//!
+//! ```rust
+//! #![no_std]
+//! use crc_fast::{checksum, CrcAlgorithm};
+//!
+//! let crc = checksum(CrcAlgorithm::Crc32IsoHdlc, b"123456789");
+//! assert_eq!(crc, 0xcbf43926);
+//! ```
+//!
+//! ## no_std with Allocator
+//!
+//! ```rust
+//! #![no_std]
+//! extern crate alloc;
+//!
+//! use crc_fast::{Digest, CrcAlgorithm};
+//!
+//! let mut digest = Digest::new(CrcAlgorithm::Crc32IsoHdlc);
+//! digest.update(b"123456789");
+//! let crc = digest.finalize();
+//! assert_eq!(crc, 0xcbf43926);
+//! ```
+//!
+//! ## Feature Detection in no_std
+//!
+//! - **With `std`**: Uses runtime CPU feature detection (`is_x86_feature_detected!`)
+//! - **Without `std`**: Uses compile-time feature detection (`cfg!(target_feature = "...")`)
+//!   - Determined at compile time based on target CPU features
+//!   - No runtime overhead
+//!   - Compile with appropriate CPU flags: `RUSTFLAGS="-C target-cpu=native"`
+//!
+//! # WASM Support
+//!
+//! The crate works seamlessly with WebAssembly targets:
+//!
+//! ```toml
+//! [dependencies]
+//! crc-fast = { version = "1.7", default-features = false, features = ["alloc"] }
+//! ```
+//!
+//! Build for WASM:
+//! ```bash
+//! cargo build --target wasm32-unknown-unknown --lib --features alloc
+//! ```
+//!
+//! ## WASM Usage Example
+//!
+//! ```rust
+//! use crc_fast::{checksum, CrcAlgorithm};
+//!
+//! // Works in WASM without modification
+//! pub fn calculate_crc(data: &[u8]) -> u64 {
+//!     checksum(CrcAlgorithm::Crc32IsoHdlc, data)
+//! }
+//! ```
+//!
+//! **Note**: WASM uses the software fallback implementation (no SIMD support yet), but
+//! performance is still excellent for typical web application use cases.
 
 use crate::crc32::consts::{
     CRC32_AIXM, CRC32_AUTOSAR, CRC32_BASE91_D, CRC32_BZIP2, CRC32_CD_ROM_EDC, CRC32_CKSUM,

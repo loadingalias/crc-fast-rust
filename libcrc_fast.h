@@ -85,6 +85,7 @@ struct CrcFastDigestHandle *crc_fast_digest_new_with_init_state(enum CrcFastAlgo
 
 /**
  * Creates a new Digest to compute CRC checksums using custom parameters
+ * Returns NULL if parameters are invalid (invalid key count or null pointer)
  */
 struct CrcFastDigestHandle *crc_fast_digest_new_with_params(struct CrcFastParams params);
 
@@ -136,6 +137,7 @@ uint64_t crc_fast_checksum(enum CrcFastAlgorithm algorithm, const char *data, ui
 
 /**
  * Helper method to calculate a CRC checksum directly for data using custom parameters
+ * Returns 0 if parameters are invalid or data is null
  */
 uint64_t crc_fast_checksum_with_params(struct CrcFastParams params,
                                        const char *data,
@@ -143,6 +145,7 @@ uint64_t crc_fast_checksum_with_params(struct CrcFastParams params,
 
 /**
  * Helper method to just calculate a CRC checksum directly for a file using algorithm
+ * Returns 0 if path is null or file I/O fails
  */
 uint64_t crc_fast_checksum_file(enum CrcFastAlgorithm algorithm,
                                 const uint8_t *path_ptr,
@@ -150,6 +153,7 @@ uint64_t crc_fast_checksum_file(enum CrcFastAlgorithm algorithm,
 
 /**
  * Helper method to calculate a CRC checksum directly for a file using custom parameters
+ * Returns 0 if parameters are invalid, path is null, or file I/O fails
  */
 uint64_t crc_fast_checksum_file_with_params(struct CrcFastParams params,
                                             const uint8_t *path_ptr,
@@ -165,6 +169,7 @@ uint64_t crc_fast_checksum_combine(enum CrcFastAlgorithm algorithm,
 
 /**
  * Combine two CRC checksums using custom parameters
+ * Returns 0 if parameters are invalid
  */
 uint64_t crc_fast_checksum_combine_with_params(struct CrcFastParams params,
                                                uint64_t checksum1,
@@ -184,11 +189,13 @@ struct CrcFastParams crc_fast_get_custom_params(const char *name_ptr,
 
 /**
  * Gets the target build properties (CPU architecture and fine-tuning parameters) for this algorithm
+ * Returns NULL if string conversion fails (should never happen)
  */
 const char *crc_fast_get_calculator_target(enum CrcFastAlgorithm algorithm);
 
 /**
  * Gets the version of this library
+ * Returns a pointer to "unknown" if version string is invalid
  */
 const char *crc_fast_get_version(void);
 
