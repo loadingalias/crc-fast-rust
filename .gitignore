@@ -5,3 +5,7 @@
 .DS_Store
 .git
 .vscode
+
+no_std.md
+NO_STD_STATUS.md
+AUDIT_REPORT.md

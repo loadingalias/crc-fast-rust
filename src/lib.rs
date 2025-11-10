@@ -145,12 +145,21 @@ use crate::crc64::consts::{
 };
 use crate::structs::Calculator;
 use crate::traits::CrcCalculator;
-use digest::{DynDigest, InvalidBufferSize};
+#[cfg(feature = "alloc")]
+use digest::DynDigest;
+use digest::InvalidBufferSize;
 
 #[cfg(feature = "std")]
 use std::fs::File;
 #[cfg(feature = "std")]
 use std::io::{Read, Write};
+
+#[cfg(all(feature = "alloc", not(feature = "std")))]
+extern crate alloc;
+#[cfg(all(feature = "alloc", not(feature = "std")))]
+use alloc::boxed::Box;
+#[cfg(all(feature = "alloc", not(feature = "std")))]
+use alloc::string::String;
 
 mod algorithm;
 mod arch;
@@ -161,6 +170,7 @@ mod crc32;
 mod crc64;
 mod enums;
 mod feature_detection;
+#[cfg(feature = "ffi")]
 mod ffi;
 mod generate;
 mod structs;
@@ -326,6 +336,7 @@ pub struct Digest {
     calculator: CalculatorFn,
 }
 
+#[cfg(feature = "alloc")]
 impl DynDigest for Digest {
     #[inline(always)]
     fn update(&mut self, data: &[u8]) {
@@ -819,6 +830,7 @@ pub fn checksum_combine_with_params(
 /// // "x86_64-avx512-vpclmulqdq" - x86_64 with VPCLMULQDQ support
 /// // "x86_64-sse-pclmulqdq" - x86_64 baseline with SSE4.1 and PCLMULQDQ
 /// ```
+#[cfg(feature = "alloc")]
 pub fn get_calculator_target(_algorithm: CrcAlgorithm) -> String {
     use crate::feature_detection::get_arch_ops;
 
@@ -1467,6 +1479,7 @@ mod lib {
     }
 
     #[test]
+    #[allow(clippy::needless_range_loop)] // Intentionally testing indexed get_key() method
     fn test_crc_keys_storage_fold_256() {
         let test_keys = [
             1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
@@ -1488,6 +1501,7 @@ mod lib {
     }
 
     #[test]
+    #[allow(clippy::needless_range_loop)] // Intentionally testing indexed get_key() method
     fn test_crc_keys_storage_future_test() {
         let test_keys = [
             1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
@@ -1510,6 +1524,7 @@ mod lib {
     }
 
     #[test]
+    #[allow(clippy::needless_range_loop)] // Intentionally testing indexed get_key() and get_key_checked() methods
     fn test_crc_params_safe_accessors() {
         // Create a test CrcParams with known keys
         let test_keys = [

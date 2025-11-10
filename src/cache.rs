@@ -19,14 +19,26 @@
 //! The cache is transparent to users and handles all memory management internally.
 
 use crate::generate;
+
+#[cfg(feature = "std")]
 use std::collections::HashMap;
+#[cfg(feature = "std")]
 use std::sync::{OnceLock, RwLock};
+
+#[cfg(all(not(feature = "std"), feature = "cache"))]
+use hashbrown::HashMap;
+#[cfg(all(not(feature = "std"), feature = "cache"))]
+use spin::{Once, RwLock};
 
 /// Global cache storage for CRC parameter keys
 ///
 /// Uses OnceLock for thread-safe lazy initialization and RwLock for concurrent access.
 /// The cache maps parameter combinations to their pre-computed folding keys.
+#[cfg(feature = "std")]
 static CACHE: OnceLock<RwLock<HashMap<CrcParamsCacheKey, [u64; 23]>>> = OnceLock::new();
+
+#[cfg(all(not(feature = "std"), feature = "cache"))]
+static CACHE: Once<RwLock<HashMap<CrcParamsCacheKey, [u64; 23]>>> = Once::new();
 
 /// Cache key for storing CRC parameters that affect key generation
 ///
@@ -67,8 +79,14 @@ impl CrcParamsCacheKey {
 ///
 /// Uses OnceLock to ensure thread-safe lazy initialization without requiring
 /// static initialization overhead. The cache is only created when first accessed.
+#[cfg(feature = "std")]
 fn get_cache() -> &'static RwLock<HashMap<CrcParamsCacheKey, [u64; 23]>> {
     CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+#[cfg(all(not(feature = "std"), feature = "cache"))]
+fn get_cache() -> &'static RwLock<HashMap<CrcParamsCacheKey, [u64; 23]>> {
+    CACHE.call_once(|| RwLock::new(HashMap::new()))
 }
 
 /// Get cached keys or generate and cache them if not present
@@ -89,33 +107,41 @@ fn get_cache() -> &'static RwLock<HashMap<CrcParamsCacheKey, [u64; 23]>> {
 /// # Arguments
 ///
 /// * `width` - CRC width in bits (32 or 64)
-/// * `poly` - Polynomial value for the CRC algorithm  
+/// * `poly` - Polynomial value for the CRC algorithm
 /// * `reflected` - Whether input/output should be bit-reflected
 ///
 /// # Returns
 ///
 /// Array of 23 pre-computed folding keys for SIMD CRC calculation
 pub fn get_or_generate_keys(width: u8, poly: u64, reflected: bool) -> [u64; 23] {
-    let cache_key = CrcParamsCacheKey::new(width, poly, reflected);
+    #[cfg(any(feature = "std", feature = "cache"))]
+    {
+        let cache_key = CrcParamsCacheKey::new(width, poly, reflected);
 
-    // Try cache read first - multiple threads can read simultaneously
-    // If lock is poisoned or read fails, continue to key generation
-    if let Ok(cache) = get_cache().read() {
-        if let Some(keys) = cache.get(&cache_key) {
-            return *keys;
+        // Try cache read first - multiple threads can read simultaneously
+        // If lock is poisoned or read fails, continue to key generation
+        if let Ok(cache) = get_cache().read() {
+            if let Some(keys) = cache.get(&cache_key) {
+                return *keys;
+            }
         }
+
+        // Generate keys outside of write lock to minimize lock hold time
+        let keys = generate::keys(width, poly, reflected);
+
+        // Try to cache the result (best effort - if this fails, we still return valid keys)
+        // Lock poisoning or write failure doesn't affect functionality
+        let _ = get_cache()
+            .write()
+            .map(|mut cache| cache.insert(cache_key, keys));
+
+        keys
     }
 
-    // Generate keys outside of write lock to minimize lock hold time
-    let keys = generate::keys(width, poly, reflected);
-
-    // Try to cache the result (best effort - if this fails, we still return valid keys)
-    // Lock poisoning or write failure doesn't affect functionality
-    let _ = get_cache()
-        .write()
-        .map(|mut cache| cache.insert(cache_key, keys));
-
-    keys
+    #[cfg(not(any(feature = "std", feature = "cache")))]
+    {
+        generate::keys(width, poly, reflected)
+    }
 }
 
 /// Clear all cached CRC parameter keys
@@ -151,11 +177,11 @@ mod tests {
 
         assert_eq!(key1.width, 32);
         assert_eq!(key1.poly, 0x04C11DB7);
-        assert_eq!(key1.reflected, true);
+        assert!(key1.reflected);
 
         assert_eq!(key2.width, 64);
         assert_eq!(key2.poly, 0x42F0E1EBA9EA3693);
-        assert_eq!(key2.reflected, false);
+        assert!(!key2.reflected);
     }
 
     #[test]
@@ -453,6 +479,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::needless_range_loop)] // Intentionally testing concurrent indexed access
     fn test_concurrent_cache_writes() {
         use std::sync::{Arc, Barrier};
         use std::thread;
@@ -1389,7 +1416,7 @@ mod tests {
 
         // Test that CrcParams can be copied and cloned
         let params_copy = params;
-        let params_clone = params.clone();
+        let params_clone = params;
 
         assert_eq!(params.keys, params_copy.keys);
         assert_eq!(params.keys, params_clone.keys);
@@ -1482,10 +1509,10 @@ mod tests {
 
         // Should have different keys due to different reflection
         assert_ne!(params_reflected.keys, params_normal.keys);
-        assert_eq!(params_reflected.refin, true);
-        assert_eq!(params_reflected.refout, true);
-        assert_eq!(params_normal.refin, false);
-        assert_eq!(params_normal.refout, false);
+        assert!(params_reflected.refin);
+        assert!(params_reflected.refout);
+        assert!(!params_normal.refin);
+        assert!(!params_normal.refout);
 
         // Test 64-bit edge cases
         let params64_min = crate::CrcParams::new("CRC64_MIN", 64, 0x1, 0x0, false, 0x0, 0x0);
@@ -1562,8 +1589,8 @@ mod tests {
             assert_eq!(params.width, 32);
             assert_eq!(params.poly, 0x04C11DB7);
             assert_eq!(params.init, 0xFFFFFFFF);
-            assert_eq!(params.refin, true);
-            assert_eq!(params.refout, true);
+            assert!(params.refin);
+            assert!(params.refout);
             assert_eq!(params.xorout, 0xFFFFFFFF);
             assert_eq!(params.check, 0xCBF43926);
         }
@@ -1658,8 +1685,8 @@ mod tests {
 
         let handle = thread::spawn(|| {
             // This thread should see the cached value from the main thread
-            let keys_thread = get_or_generate_keys(32, 0x04C11DB7, true);
-            keys_thread
+
+            get_or_generate_keys(32, 0x04C11DB7, true)
         });
 
         let keys_from_thread = handle.join().expect("Thread should not panic");

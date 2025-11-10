@@ -23,7 +23,9 @@
 use crate::consts::CRC_64_NVME;
 use crate::CrcAlgorithm;
 use crate::CrcParams;
-use crc::{Algorithm, Table};
+#[cfg(feature = "alloc")]
+use crc::Algorithm;
+use crc::Table;
 
 #[allow(unused)]
 const RUST_CRC32_AIXM: crc::Crc<u32, Table<16>> =
@@ -115,21 +117,29 @@ pub(crate) fn update(state: u64, data: &[u8], params: CrcParams) -> u64 {
                 CrcAlgorithm::Crc32Mpeg2 => RUST_CRC32_MPEG_2,
                 CrcAlgorithm::Crc32Xfer => RUST_CRC32_XFER,
                 CrcAlgorithm::Crc32Custom => {
-                    let algorithm: Algorithm<u32> = Algorithm {
-                        width: params.width,
-                        poly: params.poly as u32,
-                        init: params.init as u32,
-                        refin: params.refin,
-                        refout: params.refout,
-                        xorout: params.xorout as u32,
-                        check: params.check as u32,
-                        residue: 0x00000000, // unused in this context
-                    };
+                    #[cfg(feature = "alloc")]
+                    {
+                        extern crate alloc;
+                        use alloc::boxed::Box;
 
-                    // ugly, but the crc crate is difficult to work with...
-                    let static_algorithm = Box::leak(Box::new(algorithm));
+                        let algorithm: Algorithm<u32> = Algorithm {
+                            width: params.width,
+                            poly: params.poly as u32,
+                            init: params.init as u32,
+                            refin: params.refin,
+                            refout: params.refout,
+                            xorout: params.xorout as u32,
+                            check: params.check as u32,
+                            residue: 0x00000000, // unused in this context
+                        };
 
-                    crc::Crc::<u32, Table<16>>::new(static_algorithm)
+                        // ugly, but the crc crate is difficult to work with...
+                        let static_algorithm = Box::leak(Box::new(algorithm));
+
+                        crc::Crc::<u32, Table<16>>::new(static_algorithm)
+                    }
+                    #[cfg(not(feature = "alloc"))]
+                    panic!("Custom CRC parameters require the 'alloc' feature")
                 }
                 _ => panic!("Invalid algorithm for u32 CRC"),
             };
@@ -145,21 +155,29 @@ pub(crate) fn update(state: u64, data: &[u8], params: CrcParams) -> u64 {
                 CrcAlgorithm::Crc64We => RUST_CRC64_WE,
                 CrcAlgorithm::Crc64Xz => RUST_CRC64_XZ,
                 CrcAlgorithm::Crc64Custom => {
-                    let algorithm: Algorithm<u64> = Algorithm {
-                        width: params.width,
-                        poly: params.poly,
-                        init: params.init,
-                        refin: params.refin,
-                        refout: params.refout,
-                        xorout: params.xorout,
-                        check: params.check,
-                        residue: 0x0000000000000000, // unused in this context
-                    };
+                    #[cfg(feature = "alloc")]
+                    {
+                        extern crate alloc;
+                        use alloc::boxed::Box;
 
-                    // ugly, but the crc crate is difficult to work with...
-                    let static_algorithm = Box::leak(Box::new(algorithm));
+                        let algorithm: Algorithm<u64> = Algorithm {
+                            width: params.width,
+                            poly: params.poly,
+                            init: params.init,
+                            refin: params.refin,
+                            refout: params.refout,
+                            xorout: params.xorout,
+                            check: params.check,
+                            residue: 0x0000000000000000, // unused in this context
+                        };
 
-                    crc::Crc::<u64, Table<16>>::new(static_algorithm)
+                        // ugly, but the crc crate is difficult to work with...
+                        let static_algorithm = Box::leak(Box::new(algorithm));
+
+                        crc::Crc::<u64, Table<16>>::new(static_algorithm)
+                    }
+                    #[cfg(not(feature = "alloc"))]
+                    panic!("Custom CRC parameters require the 'alloc' feature")
                 }
                 _ => panic!("Invalid algorithm for u64 CRC"),
             };
