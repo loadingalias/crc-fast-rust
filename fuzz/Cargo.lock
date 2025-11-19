@@ -43,7 +43,7 @@ checksum = "19d374276b40fb8bbdee95aef7c7fa6b5316ec764510eb64b8dd0e2ed0d7e7f5"
 
 [[package]]
 name = "crc-fast"
-version = "1.7.1"
+version = "1.8.1"
 dependencies = [
  "crc",
  "digest",
@@ -52,8 +52,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "crc-fast-fuzz"
-version = "0.0.0"
+name = "crc-fast-rust-fuzz"
+version = "0.1.0"
 dependencies = [
  "crc",
  "crc-fast",

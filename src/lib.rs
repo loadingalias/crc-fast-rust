@@ -194,6 +194,7 @@ use crate::crc32::consts::{
 };
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
+#[cfg(feature = "std")]
 use crate::crc32::fusion;
 
 use crate::crc64::consts::{
@@ -947,7 +948,7 @@ fn get_calculator_params(algorithm: CrcAlgorithm) -> (CalculatorFn, CrcParams) {
 /// fusion techniques to accelerate the calculation beyond what SIMD can do alone.
 #[inline(always)]
 fn crc32_iscsi_calculator(state: u64, data: &[u8], _params: CrcParams) -> u64 {
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(all(target_arch = "aarch64", feature = "std"))]
     {
         use crate::feature_detection::PerformanceTier;
 
@@ -960,7 +961,7 @@ fn crc32_iscsi_calculator(state: u64, data: &[u8], _params: CrcParams) -> u64 {
         }
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+    #[cfg(all(any(target_arch = "x86_64", target_arch = "x86"), feature = "std"))]
     {
         use crate::feature_detection::PerformanceTier;
 
@@ -986,7 +987,7 @@ fn crc32_iscsi_calculator(state: u64, data: &[u8], _params: CrcParams) -> u64 {
 /// so we use the traditional calculation.
 #[inline(always)]
 fn crc32_iso_hdlc_calculator(state: u64, data: &[u8], _params: CrcParams) -> u64 {
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(all(target_arch = "aarch64", feature = "std"))]
     {
         use crate::feature_detection::{get_arch_ops, PerformanceTier};
         let arch_ops = get_arch_ops();

@@ -34,7 +34,7 @@ fuzz_target!(|data: (u8, Vec<u8>)| {
     let algo = algorithms[algo_idx as usize % algorithms.len()];
 
     // Compute expected value using crc crate
-    let (expected, width) = match algo {
+    let (expected, _width) = match algo {
         CrcAlgorithm::Crc32Aixm => (
             crc::Crc::<u32>::new(&crc::CRC_32_AIXM).checksum(&bytes) as u64,
             32,

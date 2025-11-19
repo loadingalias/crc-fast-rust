@@ -38,12 +38,27 @@ See [CHANGELOG](CHANGELOG.md).
 
 ## Build & Install
 
-`cargo build` will obviously build the library, including
-the [C-compatible library](#cc-compatible-library).
+### Library
 
-A _very_ basic [Makefile](Makefile) is supplied which supports `make install` to install the shared library and header
-file to
-the local system. Specifying the `DESTDIR` environment variable will allow you to customize the install location.
+`cargo build --release` will obviously build the Rust library, including the  [C/C++ compatible dynamic and static libraries](#cc-compatible-library).
+
+### CLI tools
+
+There are some command-line tools available:
+
+- `checksum` calculates CRC checksums from the supplied string or file
+- `get-custom-params` generates the custom CRC parameters for the supplied Rocksoft model values
+- `arch-check` checks the current architecture's hardware acceleration features (primarily for debugging)
+
+To build them, enable the `cli` feature: `cargo build --features cli --release`.
+
+### Everything
+
+To build the libraries and the CLI tools, use the `--all-features` flag:  `cargo build --all-features --release`. 
+
+A _very_ basic [Makefile](Makefile) is supplied which supports `make install` to install the libraries, header file, and
+CLI binaries to the local system. Specifying the `DESTDIR` environment variable will allow you to customize the install
+location.
 
 ```
 DESTDIR=/my/custom/path make install
@@ -63,7 +78,7 @@ The library supports various feature flags for different environments:
 * `cache` - Caches generated constants for custom CRC parameters (requires `alloc`)
 * `cli` - Enables command-line tools (`checksum`, `arch-check`, `get-custom-params`)
 
-### Building for no_std
+### Building for `no_std`
 
 For embedded targets without standard library:
 
@@ -78,9 +93,10 @@ cargo build --target thumbv7em-none-eabihf --no-default-features --features allo
 cargo build --target thumbv7em-none-eabihf --no-default-features --features cache --lib
 ```
 
-Tested on ARM Cortex-M (`thumbv7em-none-eabihf`, `thumbv8m.main-none-eabihf`) and RISC-V (`riscv32imac-unknown-none-elf`).
+Tested on ARM Cortex-M (`thumbv7em-none-eabihf`, `thumbv8m.main-none-eabihf`) and RISC-V (
+`riscv32imac-unknown-none-elf`).
 
-### Building for WASM
+### Building for `WASM`
 
 For WebAssembly targets:
 
@@ -99,7 +115,7 @@ Tested on `wasm32-unknown-unknown`, `wasm32-wasip1`, and `wasm32-wasip2` targets
 
 ## Usage
 
-Add `crc-fast = version = "1.5"` to your `Cargo.toml` dependencies, which will enable every available optimization for
+Add `crc-fast = version = "1"` to your `Cargo.toml` dependencies, which will enable every available optimization for
 the `stable` toolchain.
 
 ### Digest
@@ -297,7 +313,8 @@ assert_eq!(checksum.unwrap(), 0xcbf43926);
 
 `cargo build` will produce a shared library target (`.so` on Linux, `.dll` on Windows, `.dylib` on macOS, etc) and an
 auto-generated [libcrc_fast.h](libcrc_fast.h) header file for use in non-Rust projects, such as through
-[FFI](https://en.wikipedia.org/wiki/Foreign_function_interface). It will also produce a static library target (`.a` on Linux and macOS, `.lib` on Windows, etc) for projects
+[FFI](https://en.wikipedia.org/wiki/Foreign_function_interface). It will also produce a static library target (`.a` on
+Linux and macOS, `.lib` on Windows, etc) for projects
 which prefer statically linking.
 
 There is a [crc-fast PHP extension](https://github.com/awesomized/crc-fast-php-ext) using it, for example.
@@ -358,7 +375,7 @@ but all known public & private implementations agree on the correct value, which
 # Acceleration targets
 
 This library has baseline support for accelerating all known `CRC-32` and `CRC-64` variants on `aarch64`, `x86_64`, and
-`x86` internally in pure `Rust`. 
+`x86` internally in pure `Rust`.
 
 ### Checking your platform capabilities
 
@@ -456,6 +473,12 @@ though, with zero changes other than defining the [Rocksoft](http://www.ross.net
 In theory, much of the "heavy lifting" has been done, so it should be possible to add other widths with minimal effort.
 
 PRs welcome!
+
+## Memory Safety
+
+Given the heavy use of hardware intrinsics, this crate uses a decent amount of `unsafe` code.
+
+To help ensure memory safety, this crate is validated using [Miri](https://github.com/rust-lang/miri) on `x86_64` as well as fuzz tested using [libFuzzer](https://github.com/rust-fuzz/libfuzzer) over millions of iterations.
 
 ## References
 
