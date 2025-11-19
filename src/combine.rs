@@ -1,7 +1,28 @@
-//! This module provides a function to combine CRCs of two sequences of bytes.
+//! CRC Combination Module
 //!
-//! It is based on the work of Mark Adler and is designed to be used with
-//! different CRC algorithms.
+//! This module provides functionality to combine two CRC checksums into a single CRC
+//! value that represents the concatenated data sequence. This is useful for:
+//!
+//! - **Distributed computing**: Calculate CRCs on different chunks in parallel, then combine
+//! - **Incremental updates**: Append new data without recalculating the entire checksum
+//! - **Merkle-tree-like structures**: Build hierarchical CRC structures
+//!
+//! # Algorithm
+//!
+//! Based on Mark Adler's generalized CRC combination algorithm, which uses Galois Field (GF(2))
+//! matrix operations to efficiently "insert" zeros between two checksums. The key insight is
+//! that CRC can be viewed as polynomial multiplication in GF(2), and appending zeros is
+//! equivalent to multiplying by x^n (where n is the number of zeros).
+//!
+//! # Performance
+//!
+//! The combination operation runs in O(log N) time where N is the length of the second
+//! sequence, achieved through matrix squaring to efficiently compute the zero-insertion operator.
+//!
+//! # References
+//!
+//! - [Mark Adler's StackOverflow answer](https://stackoverflow.com/questions/29915764/generic-crc-8-16-32-64-combine-implementation/29928573#29928573)
+//! - [Ross Williams' CRC tutorial](http://www.ross.net/crc/download/crc_v3.txt)
 /*
   Derived from this excellent answer by Mark Adler on StackOverflow:
   https://stackoverflow.com/questions/29915764/generic-crc-8-16-32-64-combine-implementation/29928573#29928573
@@ -175,14 +196,6 @@ fn reflect_poly(poly: u64, width: u32) -> u64 {
     shifted & mask
 }
 
-fn bit_reverse(mut forward: u64) -> u64 {
-    let mut reversed = 0;
-
-    for _ in 0..64 {
-        reversed <<= 1;
-        reversed |= forward & 1;
-        forward >>= 1;
-    }
-
-    reversed
+fn bit_reverse(forward: u64) -> u64 {
+    forward.reverse_bits()
 }
