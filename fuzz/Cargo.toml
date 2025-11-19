@@ -1,0 +1,22 @@
+[package]
+name = "crc-fast-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+crc = "3"
+
+[dependencies.crc-fast]
+path = ".."
+
+[[bin]]
+name = "compare_vs_crc"
+path = "fuzz_targets/compare_vs_crc.rs"
+test = false
+doc = false
+bench = false

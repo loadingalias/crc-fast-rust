@@ -33,6 +33,15 @@ pub mod x86_64;
 #[inline(always)]
 #[cfg(target_arch = "aarch64")]
 pub(crate) unsafe fn update(state: u64, bytes: &[u8], params: CrcParams) -> u64 {
+    // If custom algorithm and no keys provided, force software fallback
+    if matches!(
+        params.algorithm,
+        crate::CrcAlgorithm::Crc32Custom | crate::CrcAlgorithm::Crc64Custom
+    ) && params.get_key(0) == 0
+    {
+        return crate::arch::software::update(state, bytes, params);
+    }
+
     use crate::feature_detection::{get_arch_ops, ArchOpsInstance};
 
     match get_arch_ops() {
@@ -99,6 +108,15 @@ unsafe fn update_aarch64_aes_sha3(
 #[inline(always)]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub(crate) unsafe fn update(state: u64, bytes: &[u8], params: CrcParams) -> u64 {
+    // If custom algorithm and no keys provided, force software fallback
+    if matches!(
+        params.algorithm,
+        crate::CrcAlgorithm::Crc32Custom | crate::CrcAlgorithm::Crc64Custom
+    ) && params.get_key(0) == 0
+    {
+        return crate::arch::software::update(state, bytes, params);
+    }
+
     use crate::feature_detection::{get_arch_ops, ArchOpsInstance};
 
     match get_arch_ops() {
@@ -131,6 +149,15 @@ pub(crate) unsafe fn update(state: u64, bytes: &[u8], params: CrcParams) -> u64 
 #[inline(always)]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub(crate) unsafe fn update(state: u64, bytes: &[u8], params: CrcParams) -> u64 {
+    // If custom algorithm and no keys provided, force software fallback
+    if matches!(
+        params.algorithm,
+        crate::CrcAlgorithm::Crc32Custom | crate::CrcAlgorithm::Crc64Custom
+    ) && params.get_key(0) == 0
+    {
+        return crate::arch::software::update(state, bytes, params);
+    }
+
     use crate::feature_detection::{get_arch_ops, ArchOpsInstance};
 
     match get_arch_ops() {

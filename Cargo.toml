@@ -105,3 +105,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 name = "checksum_integration_tests"
 path = "tests/checksum_integration_tests.rs"
 required-features = ["cli"]
+
+[[bench]]
+name = "software_bench"
+harness = false

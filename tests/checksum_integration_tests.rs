@@ -248,7 +248,11 @@ fn test_benchmark_size_without_benchmark_flag() {
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("--size and --duration can only be used with -b flag"));
+    assert!(
+        stderr.contains("--size and --duration can only be used with -b flag"),
+        "Expected error message not found. Actual stderr: {}",
+        stderr
+    );
 }
 
 #[test]
